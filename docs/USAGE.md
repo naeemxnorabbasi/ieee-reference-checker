@@ -21,7 +21,7 @@ TXT inputs do not require Tesseract. Add paths to `input/files.txt`, one per lin
 
 ```text
 # Relative to input/files.txt
-input/txt/my_references.txt
+txt/my_references.txt
 /Users/me/papers/references-screenshot.png
 ```
 
