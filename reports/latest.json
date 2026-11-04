@@ -1,6 +1,6 @@
 {
-  "batch_id": "20261104-140328",
-  "snapshot": "references-20261104-140328.sqlite3",
-  "report": "report-20261104-140328.md",
+  "batch_id": "20261104-141828",
+  "snapshot": "snapshots/references-20261104-141828.sqlite3",
+  "report": "reports/report-20261104-141828.md",
   "count": 54
 }
