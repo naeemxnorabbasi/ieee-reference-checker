@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+work/
+input/files.txt
+input/txt/*
+!input/txt/.gitkeep
+input/img/*
+!input/img/.gitkeep
