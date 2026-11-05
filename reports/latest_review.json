@@ -1,0 +1,18 @@
+{
+  "source_batch_id": "20261105-103444",
+  "review_report": "reports/review-report-20261105-103444-20261105-174434.md",
+  "reference_count": 312,
+  "thresholds": {
+    "title": 0.85,
+    "authors": 0.75,
+    "venue": 0.75,
+    "year": 1.0,
+    "doi": 1.0,
+    "type": 1.0
+  },
+  "title_threshold_met": 235,
+  "candidate_below_title_threshold": 63,
+  "candidate_title_unscored": 3,
+  "no_candidate_metadata": 11,
+  "candidate_count": 301
+}

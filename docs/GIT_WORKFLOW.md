@@ -23,13 +23,13 @@ Authenticate Git using GitHub CLI (`gh auth login`) or another HTTPS Git credent
 
 ## Every new batch
 
-A normal process run updates the SQLite database, writes a timestamped database snapshot and report, then stages, commits, and pushes those catalog artifacts if `origin` exists. The commit message includes the batch timestamp. This gives each batch a Git history entry and a standalone SQLite snapshot.
+A normal process run updates the SQLite database, writes a timestamped database snapshot, the original report, and a field-level review report, then stages, commits, and pushes those catalog artifacts if `origin` exists. The commit message includes the batch timestamp. This gives each batch a Git history entry and a standalone SQLite snapshot.
 
 ```sh
 python3 refcheck.py process input/files.txt
 ```
 
-Use `--no-publish` to process locally without committing or pushing. Use `--no-online-check` to skip Crossref lookup. You can combine both flags.
+Use `--no-publish` to process locally without committing or pushing. Use `--no-online-check` to skip Crossref lookup. You can combine both flags. Adjust per-field comparison thresholds in `review_config.json`; `python3 refcheck.py review` regenerates a field review from the stored Crossref metadata without new network lookups.
 
 If an automatic push fails, the database and report remain on disk and the commit may already exist locally. Fix authentication or remote settings and run:
 

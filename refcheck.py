@@ -48,23 +48,41 @@ def split_refs(text):
 def infer(c):
     title_match=re.search(r'[“\"](.*?)[”\"]',c)
     if not title_match: title_match=re.search(r'“(.*?)”',c)
-    title=re.sub(r'-\s+', '', title_match.group(1)).strip(' ,') if title_match else ''
-    authors=(c[:title_match.start()].strip(' ,') if title_match else c.split(',',1)[0].strip())
+    if title_match:
+        title=re.sub(r'-\s+', '', title_match.group(1)).strip(' ,')
+        authors=c[:title_match.start()].strip(' ,')
+    elif re.search(r'https?://',c,re.I):
+        prefix=re.split(r'https?://',c,maxsplit=1,flags=re.I)[0]
+        prefix=re.sub(r'\s*,?\s*(?:accessed|retrieved)\b.*$', '', prefix, flags=re.I)
+        prefix=re.sub(r'\s*\[(?:online|available)\].*$', '', prefix, flags=re.I)
+        prefix=re.sub(r'\s+(?:available|avaliable)\s*:\s*.*$', '', prefix, flags=re.I)
+        title=prefix.strip(' ,')
+        authors=''
+    else:
+        title=''
+        authors=c.split(',',1)[0].strip()
     year=(re.findall(r'\b(?:19|20)\d{2}\b',c) or [''])[0]
     venue=''; kind='Unclassified'
     low=c.lower()
     if 'arxiv.org' in low or 'corr' in low or 'preprint' in low: kind='Preprint'; venue='arXiv / preprint'
-    elif re.search(r'\bin\s+(?:\d{4}\s+)?(?:\d+(?:st|nd|rd|th)?\s+)?(?:international|annual|acm|ieee|conference|symposium|workshop|neurips|esscirc|design automation|advances in neural)',low): kind='Conference paper'
+    elif re.search(r'\bin\s+(?:proc\.?\s+)?(?:\d{4}\s+)?(?:\d+(?:st|nd|rd|th)?\s+)?(?:international|annual|acm|ieee|conference|symposium|workshop|neurips|esscirc|design automation|advances in neural|robotics:|science and systems)',low): kind='Conference paper'
+    elif title_match and re.search(r'\bvol\.',low) and not re.match(r'\s*,?\s*in\b',c[title_match.end():],re.I): kind='Journal paper'
     elif re.search(r'\b(journal|trans-?\s*actions|letters|review|evolution\w*|computing)\b',low): kind='Journal paper'
-    elif re.search(r'https?://',low) and re.search(r'development team|software|simulator|library|documentation|website',low): kind='Website / software'
-    elif re.search(r'https?://',low) and not title: kind='Website / software'
-    if kind=='Journal paper':
+    elif re.search(r'https?://',low): kind='Website / software'
+    if kind in {'Journal paper','Conference paper'} and title_match:
+        tail=c[title_match.end():].strip(' ,')
+        tail=re.sub(r'^in\s+', '', tail, flags=re.I)
+        tail=re.split(r',\s*(?:vol\.|volume|no\.|issue|pp?\.|pages?|art\.\s*no\.|doi:|https?://|(?:19|20)\d{2}\b)',tail,maxsplit=1,flags=re.I)[0]
+        tail=re.sub(r'^(?:(?:19|20)\d{2})\s+', '', tail)
+        tail=re.sub(r'^(?:proc\.?\s+)?\d+(?:st|nd|rd|th)\s+', '', tail, flags=re.I)
+        venue=tail.strip(' ,;')
+    if not venue and kind=='Journal paper':
         m=re.search(r'([A-Z][^,\"]{3,}?(?:Journal|Transactions|Letters|Evolution|Computation)[^,\"]*)',c,re.I); venue=m.group(1).strip() if m else ''
-    elif kind=='Conference paper':
+    elif not venue and kind=='Conference paper':
         m=re.search(r'\bin\s+(.+?)(?:,\s*(?:vol\.|20\d\d|pp\.|pages)|$)',c,re.I); venue=m.group(1).strip() if m else ''
     elif kind in {'Preprint','Website / software'}: venue='arXiv' if 'arxiv' in low or 'corr' in low else ''
     issues=[]
-    if not title: issues.append('Title not detected in quotation marks; check transcription and title field.')
+    if not title: issues.append('Title not detected; check transcription and title field.')
     if not year: issues.append('Publication year is missing.')
     if kind=='Journal paper':
         for field,pat in [('journal volume',r'\bvol\.'),('page range or article number',r'\b(?:pp?\.|pages?)\b|\bp\.\s*\d')]:
@@ -127,7 +145,9 @@ def process(paths,check_online=True,publish=True):
         md.append('')
     report=ROOT/'reports'/f'report-{batch}.md'; report.write_text('\n'.join(md))
     (ROOT/'reports'/'latest.json').write_text(json.dumps({'batch_id':batch,'snapshot':str(snap.relative_to(ROOT)),'report':str(report.relative_to(ROOT)),'count':len(rows)},indent=2))
-    print(f'Added/updated {len(rows)} references. Snapshot: {snap}\nReport: {report}')
+    from review_report import generate_review_report
+    detailed_report=generate_review_report(batch,ROOT/'review_config.json',publish=False)
+    print(f'Added/updated {len(rows)} references. Snapshot: {snap}\nReport: {report}\nField review: {detailed_report}')
     if publish: publish_batch(batch)
 
 def publish_batch(batch):
@@ -139,7 +159,7 @@ def publish_batch(batch):
     if git('remote','get-url','origin').returncode:
         print('Git publish skipped: no origin remote is configured.')
         return
-    added=git('add','--','data/references.sqlite3','reports','snapshots')
+    added=git('add','--','data/references.sqlite3','reports','snapshots','review_config.json')
     if added.returncode: raise RuntimeError('Could not stage updated catalog: '+added.stderr.strip())
     committed=git('commit','-m',f'Update reference catalog {batch}')
     if committed.returncode: raise RuntimeError('Could not commit catalog; configure git user.name/email. '+committed.stderr.strip())
@@ -152,6 +172,7 @@ def main():
     ap=argparse.ArgumentParser(description='Local reference checker and catalog')
     sub=ap.add_subparsers(dest='cmd',required=True)
     p=sub.add_parser('process',help='Process files listed in a manifest (one path per line)'); p.add_argument('manifest'); p.add_argument('--no-online-check',action='store_true'); p.add_argument('--no-publish',action='store_true',help='Do not commit and push this batch')
+    v=sub.add_parser('review',help='Create a field-level manual review report from stored Crossref metadata'); v.add_argument('--batch',help='Batch ID (defaults to reports/latest.json)'); v.add_argument('--config',default=str(ROOT/'review_config.json')); v.add_argument('--no-publish',action='store_true',help='Do not commit and push the new review report')
     s=sub.add_parser('serve',help='Start local search and export page'); s.add_argument('--port',type=int,default=8765)
     args=ap.parse_args()
     if args.cmd=='process':
@@ -163,6 +184,9 @@ def main():
             source=Path(line).expanduser()
             paths.append(str(source if source.is_absolute() else manifest.parent/source))
         process(paths,not args.no_online_check,not args.no_publish)
+    elif args.cmd=='review':
+        from review_report import generate_review_report
+        generate_review_report(args.batch,args.config,not args.no_publish)
     else: serve(args.port)
 
 PAGE='''<!doctype html><meta charset="utf-8"><title>Reference Catalog</title><style>body{font:16px system-ui;max-width:1200px;margin:30px auto;padding:0 18px;color:#19212b}input,select,button{font:inherit;padding:9px;margin:4px}input{width:min(680px,85%)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.box{border:1px solid #ccd3dc;border-radius:10px;padding:14px;min-height:280px}.item{padding:10px;border-bottom:1px solid #ddd;cursor:pointer}.item:hover{background:#eef5ff}.small{color:#526070;font-size:14px}button{cursor:pointer}</style><h1>Reference catalog</h1><p>Search by title, author, venue, type, or source filename. Select results to build an export list.</p><input id="q" placeholder="Start typing a title, author, venue, or filename" autocomplete="off"><div class="grid"><section class="box"><h2>Matches</h2><div id="hits"></div></section><section class="box"><h2>Selected references <span id="count"></span></h2><div><button onclick="exp('text')">Text</button><button onclick="exp('csv')">CSV</button><button onclick="exp('bibtex')">BibTeX</button><button onclick="clearAll()">Clear</button></div><div id="sel"></div><textarea id="out" style="width:98%;height:90px;margin-top:8px" placeholder="Export preview"></textarea></section></div><script>let selected=[];const esc=s=>String(s||'').replace(/[&<>\"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[x]));async function search(){let q=document.querySelector('#q').value;let a=await fetch('/api/search?q='+encodeURIComponent(q));let rows=await a.json();document.querySelector('#hits').innerHTML=rows.map(x=>`<div class="item" onclick="add(${x.id})"><b>${esc(x.title||x.citation)}</b><div class="small">${esc(x.authors)} · ${esc(x.venue)} · ${esc(x.year)} · ${esc(x.kind)}<br>Source: ${esc(x.source_file)}</div></div>`).join('')||'<p class="small">No matches.</p>'}async function add(id){if(selected.includes(id))return;let r=await fetch('/api/item?id='+id);selected.push(id);paint()}async function paint(){let rows=await Promise.all(selected.map(async id=>await(await fetch('/api/item?id='+id)).json()));document.querySelector('#count').textContent='('+rows.length+')';document.querySelector('#sel').innerHTML=rows.map((x,i)=>`<div class="item"><b>${esc(x.title||x.citation)}</b><div class="small">${esc(x.authors)} · ${esc(x.venue)} · ${esc(x.year)}</div><button onclick="selected.splice(${i},1);paint()">Remove</button></div>`).join('')}async function exp(format){let r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:selected,format})});document.querySelector('#out').value=await r.text()}function clearAll(){selected=[];paint();document.querySelector('#out').value=''}document.querySelector('#q').addEventListener('input',search);search();</script>'''

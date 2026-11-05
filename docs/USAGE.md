@@ -6,8 +6,9 @@
 2. `refcheck.py process` detects TXT or image inputs by extension. Images are OCR'd locally with Tesseract, one column at a time for two-column reference pages. Numbered entries such as `[1]` delimit references.
 3. The analyzer extracts a title and simple fields, classifies likely reference type, and flags common missing fields by type. This is a review aid, not a formal IEEE compliance determination.
 4. By default, the title is queried against the public Crossref works API. The report labels a close title as likely, a weak title as possible/weak, and records lookup failures. Similar titles can refer to different works; inspect all metadata before treating a citation as verified.
-5. Entries and provenance are stored in `data/references.sqlite3`. Provenance is the source basename and reference number; the database does not store the source's absolute local path. A timestamped SQLite snapshot and Markdown report are created for every batch.
-6. If Git is configured with an `origin`, the database, report, and snapshot are committed and pushed automatically. `--no-publish` disables this for an individual batch.
+5. Entries and provenance are stored in `data/references.sqlite3`. Provenance is the source basename and reference number; the database does not store the source's absolute local path. A timestamped SQLite snapshot and the original Markdown report are created for every batch.
+6. A second field-level review report is generated using the Crossref candidate already stored for that batch. It compares title, authors, venue, year, DOI, and publication type with configurable thresholds in `review_config.json`, and provides Crossref/DOI links plus manual Google Scholar search links.
+7. If Git is configured with an `origin`, the database, reports, and snapshot are committed and pushed automatically. `--no-publish` disables this for an individual batch.
 
 ## Local setup
 
@@ -45,6 +46,19 @@ python3 refcheck.py process input/files.txt --no-publish
 
 The image OCR and metadata lookup can make a batch slower. Review the generated report, especially OCR'd accents, math, URLs, and weak Crossref matches.
 
+
+## Field-level review report
+
+Every `process` run creates `reports/review-report-<batch>-<timestamp>.md` and updates `reports/latest_review.json`, leaving the original report unchanged. To regenerate the review after adjusting thresholds:
+
+```sh
+python3 refcheck.py review
+```
+
+The default thresholds are title 0.85, authors 0.75, venue 0.75, year 1.00, DOI 1.00, and publication type 1.00. Edit `review_config.json` with values from 0.0 to 1.0. A score at or above a field's threshold is `PASS`; a lower score is `REVIEW`; unavailable values are `MISSING`. These are triage scores, not calibrated probabilities of authenticity. The title threshold controls the title-qualified count; every stored candidate is still shown for manual review.
+
+Crossref searches currently use one top-ranked result per citation. The report shows the input citation beside that candidate's Crossref metadata, field scores, DOI/API links, and a manual Google Scholar search link. It does not query Google Scholar automatically. Google Scholar's [help page](https://scholar.google.com/intl/en/scholar/help.html) asks automated clients to respect robots.txt and says bulk access is unavailable. Open Scholar links in a browser, and use the linked DOI/publisher record as the strongest check for a specific publication.
+
 ## Search and export
 
 Start the local-only web server:
@@ -61,6 +75,9 @@ Open <http://127.0.0.1:8765>. Search by title text, author text, venue, citation
 - `snapshots/references-<timestamp>.sqlite3`: database state saved for each intake batch.
 - `reports/report-<timestamp>.md`: per-batch review report.
 - `reports/latest.json`: pointer to the most recent batch report and snapshot.
+- `reports/review-report-<batch>-<timestamp>.md`: detailed field comparison for manual review.
+- `reports/latest_review.json`: pointer and threshold summary for the newest field review.
+- `review_config.json`: editable field similarity thresholds.
 - `input/files.txt`: local manifest; excluded from Git.
 - `input/txt/` and `input/img/`: raw intake samples; excluded from Git by default.
 

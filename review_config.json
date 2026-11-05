@@ -1,0 +1,10 @@
+{
+  "thresholds": {
+    "title": 0.85,
+    "authors": 0.75,
+    "venue": 0.75,
+    "year": 1.0,
+    "doi": 1.0,
+    "type": 1.0
+  }
+}
