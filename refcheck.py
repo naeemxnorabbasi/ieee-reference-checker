@@ -75,7 +75,8 @@ def infer(c):
         if not venue: issues.append('Conference/proceedings name not detected.')
     if kind=='Preprint' and not re.search(r'arxiv|doi|url',low): issues.append('Preprint repository or identifier is missing.')
     if 'http://' in low: issues.append('URL uses HTTP; use HTTPS when available.')
-    doi=(re.search(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+',c,re.I) or [None,''])[1].rstrip('.,')
+    doi_match=re.search(r'10\.\d{4,9}/[-._;()/:A-Z0-9]+',c,re.I)
+    doi=doi_match.group(0).rstrip('.,') if doi_match else ''
     url_match=re.search(r'https?://\S+',c); url=url_match.group(0).rstrip('.,') if url_match else ''
     # author list is retained as a compact parse hint; exact author parsing is intentionally conservative.
     return dict(title=title,authors=authors,venue=venue,year=year,kind=kind,issues=issues,doi=doi,url=url)
